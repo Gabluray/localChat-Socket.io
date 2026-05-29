@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LocalChat</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.8.1/socket.io.js"></script>
+
+    <link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+
+  <div id="app">
+
+    <!-- Tela de entrada -->
+    <div id="login-screen">
+      <div class="login-card">
+        <div class="login-logo">
+          <div class="logo-icon">
+            <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+              <path d="M16 3C8.82 3 3 8.37 3 15c0 3.56 1.56 6.76 4.06 9.03L5.5 29l5.3-2.76A13.6 13.6 0 0016 27c7.18 0 13-5.37 13-12S23.18 3 16 3z" fill="currentColor"/>
+            </svg>
+          </div>
+          <span class="logo-text">LocalChat</span>
+        </div>
+        <p class="login-subtitle">Chat em tempo real na sua rede local</p>
+        <div class="input-group">
+          <label for="username-input">Seu nome</label>
+          <input type="text" id="username-input" placeholder="Como quer ser chamado?" maxlength="20" autocomplete="off">
+        </div>
+        <button id="enter-btn">Entrar no chat</button>
+        <p class="login-hint">Nenhuma conta necessária • 100% local</p>
+      </div>
+    </div>
+
+    <!-- Tela do chat -->
+    <div id="chat-screen" class="hidden">
+      <div class="chat-container">
+
+        <!-- Sidebar -->
+        <aside class="sidebar">
+          <div class="sidebar-header">
+            <div class="logo-icon small">
+              <svg width="18" height="18" viewBox="0 0 32 32" fill="none">
+                <path d="M16 3C8.82 3 3 8.37 3 15c0 3.56 1.56 6.76 4.06 9.03L5.5 29l5.3-2.76A13.6 13.6 0 0016 27c7.18 0 13-5.37 13-12S23.18 3 16 3z" fill="currentColor"/>
+              </svg>
+            </div>
+            <span>LocalChat</span>
+          </div>
+          <div class="sidebar-room">
+            <div class="room-icon">🌐</div>
+            <div class="room-info">
+              <span class="room-name">Sala Geral</span>
+              <span class="room-status" id="online-count">1 online</span>
+            </div>
+          </div>
+          <div class="sidebar-user">
+            <div class="avatar" id="sidebar-avatar"></div>
+            <div class="user-info">
+              <span class="user-name" id="sidebar-username"></span>
+              <span class="user-status">● Online</span>
+            </div>
+          </div>
+        </aside>
+
+        <!-- Área principal -->
+        <main class="chat-main">
+
+          <!-- Header -->
+          <header class="chat-header">
+            <div class="header-info">
+              <div class="header-avatar">🌐</div>
+              <div>
+                <h2>Sala Geral</h2>
+                <span class="typing-indicator" id="typing-indicator"></span>
+              </div>
+            </div>
+            <div class="header-actions">
+              <button class="icon-btn" id="clear-btn" title="Limpar mensagens">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/>
+                </svg>
+              </button>
+            </div>
+          </header>
+
+          <!-- Mensagens -->
+          <div class="messages-area" id="messages-area">
+            <div class="day-divider"><span>Hoje</span></div>
+          </div>
+
+          <!-- Input -->
+          <div class="input-area">
+            <div class="input-wrapper">
+              <input
+                type="text"
+                id="message-input"
+                placeholder="Escreva uma mensagem..."
+                autocomplete="off"
+                maxlength="500"
+              >
+              <button id="send-btn" class="send-btn" disabled>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <line x1="22" y1="2" x2="11" y2="13"/>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+        </main>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    var socket = io('http://localhost:3000');
+    var currentUser = '';
+    var typingTimeout;
+
+    // --- Login ---
+    $('#enter-btn').on('click', enterChat);
+    $('#username-input').on('keypress', function(e) {
+      if (e.key === 'Enter') enterChat();
+    });
+
+    function enterChat() {
+      var name = $('#username-input').val().trim();
+      if (!name.length) {
+        $('#username-input').addClass('shake');
+        setTimeout(() => $('#username-input').removeClass('shake'), 500);
+        return;
+      }
+      currentUser = name;
+      $('#sidebar-username').text(name);
+      $('#sidebar-avatar').text(name.charAt(0).toUpperCase());
+      $('#sidebar-avatar').css('background', stringToColor(name));
+      $('#login-screen').addClass('fade-out');
+      setTimeout(() => {
+        $('#login-screen').addClass('hidden');
+        $('#chat-screen').removeClass('hidden').addClass('fade-in');
+        $('#message-input').focus();
+      }, 300);
+    }
+
+    // --- Cor do avatar baseada no nome ---
+    function stringToColor(str) {
+      var colors = ['#FF6B6B','#4ECDC4','#45B7D1','#96CEB4','#FFEAA7','#DDA0DD','#98D8C8','#F7DC6F','#BB8FCE','#82E0AA'];
+      var hash = 0;
+      for (var i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
+      return colors[Math.abs(hash) % colors.length];
+    }
+
+    // --- Renderizar mensagem ---
+    function renderMessage(data) {
+      var isMine = data.author === currentUser;
+      var time = data.time || new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      var avatarLetter = data.author.charAt(0).toUpperCase();
+      var avatarColor = stringToColor(data.author);
+
+      var msgHtml = `
+        <div class="message-row ${isMine ? 'mine' : 'theirs'}">
+          ${!isMine ? `<div class="msg-avatar" style="background:${avatarColor}">${avatarLetter}</div>` : ''}
+          <div class="message-bubble">
+            ${!isMine ? `<span class="msg-author">${escapeHtml(data.author)}</span>` : ''}
+            <p class="msg-text">${escapeHtml(data.message)}</p>
+            <span class="msg-time">${time}</span>
+          </div>
+        </div>
+      `;
+
+      $('#messages-area').append(msgHtml);
+      scrollToBottom();
+    }
+
+    function escapeHtml(text) {
+      return $('<div>').text(text).html();
+    }
+
+    function scrollToBottom() {
+      var area = document.getElementById('messages-area');
+      area.scrollTop = area.scrollHeight;
+    }
+
+    // --- Socket events ---
+    socket.on('previousMessages', function(messages) {
+      messages.forEach(function(m) { renderMessage(m); });
+    });
+
+    socket.on('receiveMessage', function(data) {
+      renderMessage(data);
+    });
+
+    socket.on('userCount', function(count) {
+      $('#online-count').text(count + ' online');
+    });
+
+    socket.on('typing', function(data) {
+      if (data.author !== currentUser) {
+        $('#typing-indicator').text(data.author + ' está digitando...');
+        clearTimeout(typingTimeout);
+        typingTimeout = setTimeout(() => $('#typing-indicator').text(''), 2000);
+      }
+    });
+
+    // --- Enviar mensagem ---
+    $('#send-btn').on('click', sendMessage);
+    $('#message-input').on('keypress', function(e) {
+      if (e.key === 'Enter') sendMessage();
+    });
+
+    $('#message-input').on('input', function() {
+      var hasText = $(this).val().trim().length > 0;
+      $('#send-btn').prop('disabled', !hasText);
+      if (hasText && currentUser) {
+        socket.emit('typing', { author: currentUser });
+      }
+    });
+
+    function sendMessage() {
+      var text = $('#message-input').val().trim();
+      if (!text || !currentUser) return;
+
+      var messageObj = {
+        author: currentUser,
+        message: text,
+        time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+      };
+
+      renderMessage(messageObj);
+      socket.emit('sendMessage', messageObj);
+      $('#message-input').val('').trigger('input');
+    }
+
+    // --- Limpar mensagens (apenas visual) ---
+    $('#clear-btn').on('click', function() {
+      if (confirm('Limpar mensagens da tela?')) {
+        $('#messages-area').html('<div class="day-divider"><span>Hoje</span></div>');
+      }
+    });
+  </script>
+
+</body>
+</html>
